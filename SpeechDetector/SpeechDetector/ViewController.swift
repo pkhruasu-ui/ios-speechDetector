@@ -8,6 +8,7 @@
 
 import UIKit
 import Speech
+import AVFoundation
 
 class ViewController: UIViewController, SFSpeechRecognizerDelegate {
 
@@ -21,6 +22,10 @@ class ViewController: UIViewController, SFSpeechRecognizerDelegate {
     let speechRecognizer: SFSpeechRecognizer? = SFSpeechRecognizer()
     let request = SFSpeechAudioBufferRecognitionRequest()
     var recognitionTask: SFSpeechRecognitionTask?
+    
+    let synth = AVSpeechSynthesizer()
+    var myUtterance = AVSpeechUtterance(string: "")
+    var timerToStopSpeech = Timer()
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -58,7 +63,11 @@ class ViewController: UIViewController, SFSpeechRecognizerDelegate {
         audioEngine.prepare()
         // start
         do {
-            try audioEngine.start()
+            if !audioEngine.isRunning {
+                try audioEngine.start()
+                timerToStopSpeech = startSPeechDelayTimerToStop()
+                startButton.setTitle("Stop", for: .normal)
+            }
         } catch {
             return print(error)
         }
@@ -77,7 +86,10 @@ class ViewController: UIViewController, SFSpeechRecognizerDelegate {
             if let result = result {
                 let bestString = result.bestTranscription.formattedString
                 self.detectedTextLabel.text = bestString
-
+                // say what has been return
+                // audio will "stutter" because data is streaming in. In real app, we would response when all is done
+                self.textToSpeech(text: bestString)
+                
                 // change color base on the last text output
                 var lastString: String = ""
                 for segment in result.bestTranscription.segments {
@@ -87,8 +99,12 @@ class ViewController: UIViewController, SFSpeechRecognizerDelegate {
                 
                 self.checkForColorsSaid(resultString: lastString)
                 
+                // extend the timer
+                self.timerToStopSpeech = self.startSPeechDelayTimerToStop()
+                
+                
             } else if let error = error {
-                print(error)
+//                print(error)  // not an actual error. this happen when there is no sound coming in
             }})
     }
     
@@ -122,6 +138,54 @@ class ViewController: UIViewController, SFSpeechRecognizerDelegate {
                 }
             }
         }
+    }
+    
+    func textToSpeech(text: String) {
+//        print("Before speak=\(synth.isSpeaking), paused=\(synth.isPaused)")
+        
+        if synth.isSpeaking {
+            synth.stopSpeaking(at: .immediate)
+        }
+        
+        myUtterance = AVSpeechUtterance(string: text)
+        myUtterance.rate = 0.4
+        synth.speak(myUtterance)
+        
+        
+
+//        if synth.isPaused {
+//            // continue
+//            synth.continueSpeaking()
+//        } else if synth.isSpeaking {
+//            // pause
+//            synth.pauseSpeaking(at: .immediate)
+//        } else {
+//            // start a new one
+//            myUtterance = AVSpeechUtterance(string: text)
+//            myUtterance.rate = 0.3
+//            synth.speak(myUtterance)
+//        }
+//        print("After speak=\(synth.isSpeaking), paused=\(synth.isPaused)")
+    }
+    
+    func stopSpeech(){
+        // cleanup
+        recognitionTask?.cancel()
+        recognitionTask?.finish()
+        
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
+        request.endAudio()
+        
+        startButton.setTitle("Start", for: .normal)
+    }
+    
+    func startSPeechDelayTimerToStop() -> Timer {
+        if timerToStopSpeech.isValid { timerToStopSpeech.invalidate() }
+//        timerToStopSpeech?.invalidate()
+        return Timer.scheduledTimer(withTimeInterval: 3, repeats: false, block: { (Timer) in
+            self.stopSpeech()
+        })
     }
 }
 
